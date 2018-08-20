@@ -1,5 +1,6 @@
 # refer code: https://medium.com/@martinpella/how-to-use-pre-trained-word-embeddings-in-pytorch-71ca59249f76
 # refer code2: https://github.com/Cadene/skip-thoughts.torch.git
+# sru:
 import torch
 import torch.nn as nn
 import os
@@ -7,16 +8,19 @@ import numpy as np
 from sru import SRU
 
 class TextEncoder(nn.Module):
-    def __init__(self, w2v_path, vocabs, num_embed, K=620, d=2400, num_stack=4):
-        super(self).__init__()
-        self.embedding = self.create_emb_layer(self.load_dicts(w2v_path),
-                                               self.load_emb_params(w2v_path),
-                                               vocabs,
-                                               num_embed,
+    def __init__(self, pretrained_path, vocab, K=620, d=2400, num_stack=4):
+        super(TextEncoder, self).__init__()
+        self.vocab = vocab
+        self.embedding = self.create_emb_layer(self.load_dicts(pretrained_path),
+                                               self.load_emb_params(pretrained_path),
+                                               self.vocab,
                                                K)
         self.input_size = K
         self.hidden_size = d
         self.num_layers = num_stack
+        # self.sru = nn.GRU(self.input_size, self.hidden_size,
+        #                    num_layers = self.num_layers,
+        #                    dropout = 0.25)
         self.sru = SRU(self.input_size, self.hidden_size,
                        num_layers = self.num_layers,          # number of stacking RNN layers
                        rnn_dropout = 0.25,      # variational dropout applied on linear transformation
@@ -30,38 +34,46 @@ class TextEncoder(nn.Module):
                        )
 
     def forward(self, inp):
-        hidden = self.init_hidden(inp.size(0))
-        output = self.sru(self.embedding(inp), hidden)
-        output = output / torch.norm(output, 2, dim=2)
+        # x size: [B, T, K] = [160, 57, 620]
+        x = self.embedding(inp)
+        hidden = self.init_hidden(x.size(0)).cuda()
+        x = x.transpose(1, 0) #swap B and T
+        # output size: [57, 160, 2400]
+        output, hidden = self.sru(x, hidden)
+        output = output[-1] #[160, 2400]
+        norm = torch.norm(output, 2, dim=1) #norm size: [160]
+        output = output / norm.view(norm.size(0), 1)
         return output
 
     def init_hidden(self, batch_size):
         return torch.zeros(self.num_layers, batch_size, self.hidden_size)
 
-    def load_dicts(self, w2v_path):
-        path = os.path.join(w2v_path, 'dictionary.txt')
-        with open(path_dict, 'r') as f:
-            dicts = {w: idx for (idx, w) in enumerate(f)} # .strip()?
+    def load_dicts(self, pretrained_path):
+        path = os.path.join(pretrained_path, 'dictionary.txt')
+        with open(path, 'r') as f:
+            dicts = {w.strip(): idx for (idx, w) in enumerate(f)} # .strip()?
         return dicts
 
-    def load_emb_params(self, w2v_path):
-        path = os.path.join(w2v_path, 'utable.npy')
+    def load_emb_params(self, pretrained_path):
+        path = os.path.join(pretrained_path, 'utable.npy')
         params = np.load(path, encoding='latin1') # to load from python2
-        return torch.from_numpy(params)
+        return params
 
-    def create_emb_layer(self, dicts, params, vocabs, num_embed, K, non_train=False):
+    def create_emb_layer(self, dicts, params, vocab, K, non_train=False):
         #word2vec: "Skip-thought vectors" [NIPS2015]
         #https://github.com/ryankiros/skip-thoughts
-        weights_matrix = torch.zeros((num_embed, K)) # first dim = zeros -> +1
+        print('     load pretrained word2vec embedding...')
+        num_embed = len(vocab)
+        weights_matrix = torch.zeros((num_embed, K))
         unknown_params = params[dicts['UNK']]
         unknown = 0
-
-        for word in vocabs.keys():
-            try:
-                weights_matrix[word2idx[word]] = params[dicts[word]]
-            except KeyError:
-                weights_matrix[word2idx[word]] = unknown_params
-                unknown += 1
+        for idx in range(num_embed):
+          try:
+            word = vocab.idx2word[idx]
+            weights_matrix[idx] = torch.from_numpy(params[dicts[word]])
+          except KeyError:
+            weights_matrix[idx] = torch.from_numpy(unknown_params)
+            unknown += 1
 
         emb_layer = nn.Embedding(num_embed, K)
         emb_layer.load_state_dict({'weight': weights_matrix})
@@ -69,10 +81,22 @@ class TextEncoder(nn.Module):
             emb_layer.weight.requires_grad = False
         if unknown > 0:
             print('Warning: {}/{} words are not in dictionary, thus set UNK'
-                  .format(unknown, len(vocabs.keys())))
+                  .format(unknown, num_embed))
         # if self.save:
         #     torch.save(self.embedding, path)
         return emb_layer
+
+        # weights_matrix = torch.zeros((num_embed+3, K)) # first dim = zeros -> +1
+        # unknown_params = params[dicts['UNK']]
+        # unknown = 0
+
+        # for word in vocab.keys():
+        #     try:
+        #         weights_matrix[vocab(word)] = params[dicts[word]]
+        #     except KeyError:
+        #         weights_matrix[vocab(word)] = unknown_params
+        #         unknown += 1
+
 
 #  class TextEncoder(nn.Module):
 #      def __init__(self, num_embed, K, hidden_size):

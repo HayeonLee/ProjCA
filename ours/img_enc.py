@@ -4,7 +4,7 @@ import torch.nn as nn
 from torchvision import models
 
 class ResNet(nn.Module):
-	def __init__(self, non_trainable=True):
+	def __init__(self, non_trainable=False):
 		super(ResNet, self).__init__()
 		self.resnet152 = models.resnet152(pretrained=True)
 		if non_trainable:
@@ -13,7 +13,7 @@ class ResNet(nn.Module):
 		self.select = 'layer4' #conv5
 
 	def forward(self, x):
-		for name, layer in self.resnet.named_children():
+		for name, layer in self.resnet152.named_children():
 			x = layer(x)
 			if name in self.select:
 				break
@@ -39,12 +39,12 @@ class ImageEncoder(nn.Module):
     self.dropout = nn.Dropout(p=0.5)
 
   def forward(self, x):
-  	x = self.resnet(x)
-  	x = self.conv1x1(x)
-  	x = self.spool(x)
-  	x = self.dropout(x)
-  	x = self.proj(x)
-  	x = x / torch.norm(x, 2, dim=2)
+    x = self.resnet(x)
+    x = self.conv1x1(x)
+    x = self.spool(x)
+    x = self.dropout(x)
+    x = self.proj(x)
+    x = x / torch.norm(x, 2, dim=1).unsqueeze(1)
 
     return x
 
