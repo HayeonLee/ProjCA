@@ -33,5 +33,5 @@ $ python make_npy.py
 <br/>
 
 ### Download initial-pretrained resnet + 1x1 conv layers
-(init.pth)(https://drive.google.com/open?id=1ldRO9LzTg2_1HPlqA1flpK7T0QEGBmHM)
+[init.pth](https://drive.google.com/open?id=1ldRO9LzTg2_1HPlqA1flpK7T0QEGBmHM)
 
