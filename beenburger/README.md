@@ -19,7 +19,7 @@ $ wget -P ./w2v/ http://www.cs.toronto.edu/~rkiros/models/btable.npy
 ### Make coco vocabulary
 ```bash
 $ cd code/preprocess
-$ python make_vocab.py
+$ python vocab.py
 ```
 
 <br/>
